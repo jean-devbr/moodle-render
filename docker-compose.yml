@@ -1,0 +1,46 @@
+version: '3.8'
+services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: bancodados-mariadb-1
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpass
+      MARIADB_DATABASE: bitnami_moodle
+      MARIADB_USER: bn_moodle
+      MARIADB_PASSWORD: moodlepass
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-prootpass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  moodle:
+    image: bitnami/moodle:4.1.0
+    container_name: bancodados-moodle-1
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      MOODLE_DATABASE_HOST: mariadb
+      MOODLE_DATABASE_PORT_NUMBER: "3306"
+      MOODLE_DATABASE_USER: bn_moodle
+      MOODLE_DATABASE_PASSWORD: moodlepass
+      MOODLE_DATABASE_NAME: bitnami_moodle
+      MOODLE_USERNAME: admin
+      MOODLE_PASSWORD: admin123
+      MOODLE_EMAIL: admin@example.com
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    restart: unless-stopped
+    volumes:
+      - moodle_data:/bitnami/moodle
+      - moodledata_data:/bitnami/moodledata
+
+volumes:
+  mariadb_data:
+  moodle_data:
+  moodledata_data:
