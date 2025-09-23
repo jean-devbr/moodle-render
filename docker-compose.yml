@@ -37,8 +37,9 @@ services:
       - "8443:8443"
     restart: unless-stopped
     volumes:
-      - moodle_data:/bitnami/moodle
+      - moodle_data:/bitnami
       - moodledata_data:/bitnami/moodledata
+
 
 volumes:
   mariadb_data:
