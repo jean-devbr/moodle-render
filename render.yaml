@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: moodle-app
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: MOODLE_DOCKER_DBHOST
+        value: ${DB_HOST}
+      - key: MOODLE_DOCKER_DBUSER
+        value: ${DB_USER}
+      - key: MOODLE_DOCKER_DBPASS
+        value: ${DB_PASS}
+      - key: MOODLE_DOCKER_DBNAME
+        value: ${DB_NAME}
+
+databases:
+  - name: moodle-db
+    plan: free
+    databaseName: moodle
+    user: moodle
