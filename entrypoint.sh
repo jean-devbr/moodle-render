@@ -1,22 +1,21 @@
 #!/usr/bin/env sh
 set -ex
 
-# Corrige ${APACHE_DOCUMENT_ROOT} não definido no Apache
+# Apache: garante DocumentRoot definido
 : "${APACHE_DOCUMENT_ROOT:=/var/www/html}"
 export APACHE_DOCUMENT_ROOT
 echo "Define APACHE_DOCUMENT_ROOT ${APACHE_DOCUMENT_ROOT}" > /etc/apache2/conf-available/zzz-define-docroot.conf
 a2enconf zzz-define-docroot >/dev/null 2>&1 || true
 
-# Diretórios (no plano Free são efêmeros)
+# Diretórios (efêmeros no Free)
 : "${MOODLE_DATAROOT:=/tmp/moodledata}"
 : "${MOODLE_TEMPDIR:=/tmp/moodletemp}"
 : "${MOODLE_CACHEDIR:=/tmp/moodlecache}"
 : "${MOODLE_LOCALCACHEDIR:=/tmp/moodlelocalcache}"
-
 mkdir -p "$MOODLE_DATAROOT" "$MOODLE_TEMPDIR" "$MOODLE_CACHEDIR" "$MOODLE_LOCALCACHEDIR"
 chown -R www-data:www-data "$MOODLE_DATAROOT" "$MOODLE_TEMPDIR" "$MOODLE_CACHEDIR" "$MOODLE_LOCALCACHEDIR"
 
-# DB (Postgres)
+# DB (Postgres Render)
 : "${DB_TYPE:=pgsql}"
 : "${DB_PORT:=5432}"
 : "${DB_PREFIX:=mdl_}"
@@ -29,7 +28,7 @@ $conn=@pg_connect("host={$h} port={$p} dbname={$d} user={$u} password={$pw} sslm
 if(!$conn){fwrite(STDERR,"[dbcheck] ".pg_last_error()."\n");} else {echo "[dbcheck] OK\n"; pg_close($conn);}
 ' || true
 
-# (Re)gera config.php
+# Gera config.php a partir das envs
 if [ "${FORCE_CONFIG:-1}" = "1" ]; then
   : "${MOODLE_WWWROOT:=http://localhost}"
   cat > /var/www/html/config.php <<'PHP'
@@ -65,7 +64,7 @@ $CFG->localcachedir  = getenv('MOODLE_LOCALCACHEDIR') ?: '/tmp/moodlelocalcache'
 $CFG->dbsessions = 1;
 $CFG->session_handler_class = '\core\session\database';
 
-/* Render: manter apenas SSL proxy */
+/* Render: sem reverse proxy explícito */
 $CFG->reverseproxy = false;
 $CFG->sslproxy     = true;
 
@@ -77,9 +76,31 @@ PHP
   chown www-data:www-data /var/www/html/config.php
 fi
 
-echo "[entrypoint] Entregando para docker-php-entrypoint"
-if [ "$#" -gt 0 ]; then
-  exec /usr/local/bin/docker-php-entrypoint "$@"
+# Auto instalar/atualizar (sem Shell)
+: "${ADMIN_USER:=admin}"
+: "${ADMIN_PASS:=Admin!23456}"
+: "${ADMIN_EMAIL:=admin@example.com}"
+: "${SITE_FULLNAME:=Moodle Render}"
+: "${SITE_SHORTNAME:=Moodle}"
+
+# Se já instalado: roda upgrade; senão: instala
+if php /var/www/html/admin/cli/isinstalled.php >/dev/null 2>&1; then
+  echo "[entrypoint] Running upgrade"
+  php /var/www/html/admin/cli/upgrade.php --non-interactive --agree-license || true
 else
-  exec /usr/local/bin/docker-php-entrypoint apache2-foreground
+  echo "[entrypoint] Running first install"
+  php /var/www/html/admin/cli/install.php \
+    --non-interactive --agree-license \
+    --wwwroot="${MOODLE_WWWROOT}" \
+    --dataroot="${MOODLE_DATAROOT}" \
+    --dbtype="${DB_TYPE}" --dbhost="${DB_HOST}" --dbport="${DB_PORT}" \
+    --dbname="${DB_NAME}" --dbuser="${DB_USER}" --dbpass="${DB_PASS}" \
+    --dbprefix="${DB_PREFIX}" \
+    --fullname="${SITE_FULLNAME}" --shortname="${SITE_SHORTNAME}" \
+    --adminuser="${ADMIN_USER}" --adminpass="${ADMIN_PASS}" --adminemail="${ADMIN_EMAIL}" || true
+  # Sai do modo manutenção se o instalador deixou ligado
+  php /var/www/html/admin/cli/maintenance.php --disable || true
 fi
+
+echo "[entrypoint] Handing off to docker-php-entrypoint"
+exec /usr/local/bin/docker-php-entrypoint apache2-foreground
