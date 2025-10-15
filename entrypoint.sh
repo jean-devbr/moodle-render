@@ -87,6 +87,8 @@ fi
 if php /var/www/html/admin/cli/isinstalled.php >/dev/null 2>&1; then
   echo "[entrypoint] Running upgrade"
   php /var/www/html/admin/cli/upgrade.php --non-interactive --agree-license || true
+  php /var/www/html/admin/cli/maintenance.php --disable || true
+  php /var/www/html/admin/cli/purge_caches.php || true
 else
   echo "[entrypoint] Running first install"
   php /var/www/html/admin/cli/install.php \
@@ -98,8 +100,8 @@ else
     --dbprefix="${DB_PREFIX}" \
     --fullname="${SITE_FULLNAME}" --shortname="${SITE_SHORTNAME}" \
     --adminuser="${ADMIN_USER}" --adminpass="${ADMIN_PASS}" --adminemail="${ADMIN_EMAIL}" || true
-  # Sai do modo manutenção se o instalador deixou ligado
   php /var/www/html/admin/cli/maintenance.php --disable || true
+  php /var/www/html/admin/cli/purge_caches.php || true
 fi
 
 echo "[entrypoint] Handing off to docker-php-entrypoint"
