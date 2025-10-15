@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
-set -e
+set -ex
 
-# Diretórios. No plano Free use /tmp/moodledata (efêmero). Em produção use /var/moodledata com Disk.
+# Diretórios (Free = efêmero)
 : "${MOODLE_DATAROOT:=/tmp/moodledata}"
 : "${MOODLE_TEMPDIR:=/tmp/moodletemp}"
 : "${MOODLE_CACHEDIR:=/tmp/moodlecache}"
@@ -11,10 +11,11 @@ set -e
 : "${DB_PORT:=5432}"
 : "${DB_PREFIX:=mdl_}"
 
+echo "[entrypoint] Preparando diretórios"
 mkdir -p "$MOODLE_DATAROOT" "$MOODLE_TEMPDIR" "$MOODLE_CACHEDIR" "$MOODLE_LOCALCACHEDIR"
 chown -R www-data:www-data "$MOODLE_DATAROOT" "$MOODLE_TEMPDIR" "$MOODLE_CACHEDIR" "$MOODLE_LOCALCACHEDIR"
 
-# Sempre (re)gera config.php a partir das variáveis. Use FORCE_CONFIG=0 para não sobrescrever.
+# (Re)gera config.php a partir das variáveis
 if [ "${FORCE_CONFIG:-1}" = "1" ]; then
   : "${MOODLE_WWWROOT:=http://localhost}"
   cat > /var/www/html/config.php <<'PHP'
@@ -23,7 +24,6 @@ unset($CFG);
 global $CFG;
 $CFG = new stdClass();
 
-/* Banco */
 $CFG->dbtype    = getenv('DB_TYPE') ?: 'pgsql';
 $CFG->dblibrary = 'native';
 $CFG->dbhost    = getenv('DB_HOST');
@@ -38,18 +38,14 @@ $CFG->dboptions = array(
   'dbcollation' => 'utf8mb4_unicode_ci',
 );
 
-/* URLs e diretórios */
 $CFG->wwwroot        = getenv('MOODLE_WWWROOT') ?: 'http://localhost';
 $CFG->dataroot       = getenv('MOODLE_DATAROOT') ?: '/tmp/moodledata';
 $CFG->tempdir        = getenv('MOODLE_TEMPDIR') ?: '/tmp/moodletemp';
 $CFG->cachedir       = getenv('MOODLE_CACHEDIR') ?: '/tmp/moodlecache';
 $CFG->localcachedir  = getenv('MOODLE_LOCALCACHEDIR') ?: '/tmp/moodlelocalcache';
 
-/* Sessões no banco (menos dependência de disco local) */
-$CFG->dbsessions = 1; // compat
+$CFG->dbsessions = 1;
 $CFG->session_handler_class = '\core\session\database';
-
-/* Proxy/HTTPS no Render */
 $CFG->reverseproxy = true;
 $CFG->sslproxy     = true;
 
@@ -61,9 +57,9 @@ PHP
   chown www-data:www-data /var/www/html/config.php
 fi
 
-# Inicia Apache
+echo "[entrypoint] Entregando para docker-php-entrypoint"
 if [ "$#" -gt 0 ]; then
-  exec "$@"
+  exec /usr/local/bin/docker-php-entrypoint "$@"
 else
-  exec apache2-foreground
+  exec /usr/local/bin/docker-php-entrypoint apache2-foreground
 fi
