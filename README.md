@@ -1,76 +1,68 @@
-# BancoDados — Moodle + MariaDB (Docker)
+# Moodle no Render (Dockerfile + PostgreSQL)
 
-Este repositório traz uma configuração Docker Compose para executar o Moodle (aplicação web de ensino) com um banco de dados MariaDB.
+Infra simples para rodar Moodle no Render:
+- Web Service (este repo, Dockerfile + Apache + PHP 8.2)
+- PostgreSQL gerenciado do Render
 
-Resumo
-- Serviços:
-  - `mariadb`: servidor MariaDB que armazena os dados do Moodle.
-  - `moodle`: container Bitnami do Moodle (PHP + Apache) que provê a interface web em HTTP/HTTPS.
-- Portas expostas:
-  - Moodle HTTP: `8080` (host) -> `8080` (container)
-  - (Se presente) Moodle HTTPS: `8443` (host) -> `8443` (container)
-- Volumes importantes:
-  - `mariadb_data`: dados persistidos do MariaDB.
-  - `moodle_data`: arquivos da aplicação Moodle persistidos (conteúdo de `/bitnami/moodle`).
-  - `moodledata_data`: dataroot do Moodle (arquivos carregados pelos usuários) — normalmente mapeado para `/bitnami/moodledata`.
+O entrypoint:
+- Define o APACHE_DOCUMENT_ROOT no Apache.
+- Gera config.php a partir das variáveis de ambiente.
+- Força SSL ao Postgres (PGSSLMODE=require).
+- Instala o Moodle via CLI na primeira execução ou executa upgrade nas próximas.
+- Faz purge de cache após instalar/atualizar.
 
-Pré-requisitos
-- Docker e Docker Compose instalados na sua máquina.
-- Espaço em disco suficiente para volumes (vários centenas de MBs a alguns GBs, dependendo do conteúdo).
+Requisitos
+- Conta no Render.
+- Um serviço PostgreSQL no Render (recomendado usar o host do External Database URL).
+- Repositório conectado ao Render.
 
-Como rodar (passo-a-passo) exemplo
-1. Abrir o diretório do projeto:
+Variáveis de ambiente (Render > Web Service > Environment)
+- DB_TYPE=pgsql
+- DB_HOST=dpg-...oregon-postgres.render.com  (copie do External Database URL/PSQL Command)
+- DB_PORT=5432
+- DB_NAME=<nome do banco>
+- DB_USER=<usuário>
+- DB_PASS=<senha do banco>
+- PGSSLMODE=require
+- DB_PREFIX=mdl_  (altere se já houver tabelas: ex. mdl2_)
+- MOODLE_WWWROOT=https://<seu-servico>.onrender.com
+- MOODLE_DATAROOT=/tmp/moodledata  (ephemeral no Free)
+- FORCE_CONFIG=1
+- ADMIN_USER=admin
+- ADMIN_PASS=Adm!n2025_R3nd3r#  (ajuste)
+- ADMIN_EMAIL=admin@seu-dominio.com
+- SITE_FULLNAME=Moodle Render
+- SITE_SHORTNAME=Moodle
 
-```bash
-cd /home/jean/projects/bancoDados
-```
+Deploy
+1) Conecte o repo ao Render e crie um Web Service (Docker).
+2) Adicione as variáveis acima e “Save, rebuild, and deploy”.
+3) Nos logs procure:
+   - “[dbcheck] OK”
+   - “Running first install” (primeiro deploy) ou “Running upgrade” (seguintes)
+4) Acesse o domínio e conclua as telas iniciais (nome do site, fuso etc.).
 
-2. Subir os serviços em background:
+Atualizações
+- A cada novo deploy o entrypoint executa o upgrade do Moodle via CLI e limpa os caches.
 
-```bash
-docker compose up -d
-```
+Resolução de problemas
+- Database connection failed:
+  - Verifique DB_HOST/DB_NAME/DB_USER/DB_PASS e PGSSLMODE=require.
+  - Teste do seu computador (Linux):
+    PGPASSWORD='<SENHA>' PGSSLMODE=require psql -h <HOST> -p 5432 -U <USUARIO> -d <DB> -c 'select now();'
+- “Reverse proxy enabled…”:
+  - Já resolvido no config (reverseproxy=false, sslproxy=true).
+- “relation ‘mdl_…’ already exists” durante instalação:
+  - Limpe o banco (apaga TUDO):
+    PGPASSWORD='<SENHA>' PGSSLMODE=require psql -h <HOST> -p 5432 -U <USUARIO> -d <DB> <<'SQL'
+    BEGIN;
+    DROP SCHEMA public CASCADE;
+    CREATE SCHEMA public AUTHORIZATION <USUARIO>;
+    GRANT ALL ON SCHEMA public TO public;
+    COMMIT;
+    SQL
+  - Ou mude DB_PREFIX para outro valor (ex. mdl2_) e redeploy.
 
-3. Verificar se os containers estão rodando:
-
-```bash
-docker ps
-```
-
-Procure por `bancodados-mariadb-1` e `bancodados-moodle-1` (ou nomes equivalentes) e verifique portas e status.
-
-4. Acessar o Moodle no navegador:
-
-- Abra: `http://localhost:8080`
-- Use as credenciais de administrador definidas no `docker-compose.yml` (ex.: `MOODLE_USERNAME` / `MOODLE_PASSWORD`) durante a instalação automática.
-
-Como acessar o banco de dados MariaDB
-- A forma mais simples e segura é executar comandos diretamente no container MariaDB:
-
-```bash
-# Acessa o cliente mariadb como root
-docker exec -it bancodados-mariadb-1 mariadb -uroot -prootpass
-```
-
-- Comando único sem entrar interativo:
-
-```bash
-docker exec bancodados-mariadb-1 mariadb -uroot -prootpass -e "SHOW DATABASES;"
-```
-
-- Se preferir GUI, rode o Adminer temporariamente (conecta-se à rede do compose):
-
-```bash
-docker run --rm -d --name adminer --network $(docker compose ps -q | head -n1 | xargs docker inspect --format '{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}') -p 8081:8080 adminer
-```
-
-Depois acesse `http://localhost:8081` e conecte com:
-- Host: `mariadb` (nome do serviço dentro da rede)
-- Usuário/senha: conforme `docker-compose.yml` (ex.: `bn_moodle` / `moodlepass`) ou `root`/`rootpass`
-
-Principais variáveis no `docker-compose.yml`
-- `MARIADB_ROOT_PASSWORD` — senha do root do MariaDB.
-- `MARIADB_DATABASE` — nome do banco criado para o Moodle (ex.: `bitnami_moodle`).
-- `MARIADB_USER` / `MARIADB_PASSWORD` — usuário usado pela aplicação Moodle.
-- `MOODLE_DATABASE_HOST` / `MOODLE_DATABASE_USER` / `MOODLE_DATABASE_PASSWORD` — correspondem às configurações de conexão do Moodle.
-- `MOODLE_USERNAME` / `MOODLE_PASSWORD` — credenciais do admin Moodle (se a instalação é automatizada).
+Notas
+- Plano Free do Render tem filesystem efêmero; por isso o dataroot está em /tmp. Para produção, use um volume persistente/serviço com disco.
+- Nunca commit secrets. Use o painel de Environment do Render.
