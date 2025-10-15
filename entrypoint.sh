@@ -4,6 +4,11 @@ set -ex
 : "${APACHE_DOCUMENT_ROOT:=/var/www/html}"
 export APACHE_DOCUMENT_ROOT
 
+# Garante a variável no Apache (Define), senão ele usa literalmente ${APACHE_DOCUMENT_ROOT}
+# e dá 403/DocumentRoot not exist.
+echo "Define APACHE_DOCUMENT_ROOT ${APACHE_DOCUMENT_ROOT}" > /etc/apache2/conf-available/zzz-define-docroot.conf
+a2enconf zzz-define-docroot >/dev/null 2>&1 || true
+
 # Diretórios (Free = efêmero)
 : "${MOODLE_DATAROOT:=/tmp/moodledata}"
 : "${MOODLE_TEMPDIR:=/tmp/moodletemp}"
