@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 set -ex
 
+: "${APACHE_DOCUMENT_ROOT:=/var/www/html}"
+export APACHE_DOCUMENT_ROOT
+
 # Diretórios (Free = efêmero)
 : "${MOODLE_DATAROOT:=/tmp/moodledata}"
 : "${MOODLE_TEMPDIR:=/tmp/moodletemp}"
@@ -15,7 +18,6 @@ echo "[entrypoint] Preparando diretórios"
 mkdir -p "$MOODLE_DATAROOT" "$MOODLE_TEMPDIR" "$MOODLE_CACHEDIR" "$MOODLE_LOCALCACHEDIR"
 chown -R www-data:www-data "$MOODLE_DATAROOT" "$MOODLE_TEMPDIR" "$MOODLE_CACHEDIR" "$MOODLE_LOCALCACHEDIR"
 
-# (Re)gera config.php a partir das variáveis
 if [ "${FORCE_CONFIG:-1}" = "1" ]; then
   : "${MOODLE_WWWROOT:=http://localhost}"
   cat > /var/www/html/config.php <<'PHP'
